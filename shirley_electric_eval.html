@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+\A<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -11,7 +11,7 @@
   :root {
     --orange: #e8520a; --orange-light: #fff0e8; --navy: #1a2a4a;
     --green: #1e7e34; --green-light: #d4edda; --green-btn: #28a745; --green-dark: #155724;
-    --yellow: #856404; --yellow-light: #fff3cd; --yellow-btn: #ffc107; --yellow-dark: #533f03;
+    --yellow: #856404; --yellow-light: #fff3cd; --yellAow-btn: #ffc107; --yellow-dark: #533f03;
     --red: #721c24; --red-light: #f8d7da; --red-btn: #dc3545; --red-dark: #491217;
     --blue: #1a6fbd; --blue-light: #e8f1fb; --blue-mid: #4a90d9;
     --gray0: #f5f6f8; --gray1: #e8eaed; --gray2: #d1d5db; --gray3: #9ca3af;
@@ -327,6 +327,10 @@ function buildNotesPage() {
     <div class="field"><textarea id="f-hazards" placeholder="Exterior panel blocked by A/C unit, interior panel crimped splices not permitted, 1 20 amp breaker wire oversized, no grounds present…" style="min-height:100px;"></textarea></div>
   </div>
   <div class="card">
+    <div class="card-title">Recommended repairs</div>
+    <div class="field"><textarea id="f-repairs" placeholder="List recommended repairs, upgrades, or follow-up actions required…" style="min-height:100px;"></textarea></div>
+  </div>
+  <div class="card">
     <div class="card-title">Overall result</div>
     <button class="priority-btn p3" id="pri-3" onclick="setPriority(3)" style="padding:13px 14px;border-radius:8px;border:1.5px solid #d1d5db;background:white;font-size:14px;font-weight:500;color:#374151;cursor:pointer;margin-bottom:8px;display:block;width:100%;text-align:left;font-family:var(--font);">🚨  Critical — do not occupy / immediate repair required</button>
     <button class="priority-btn p2" id="pri-2" onclick="setPriority(2)" style="padding:13px 14px;border-radius:8px;border:1.5px solid #d1d5db;background:white;font-size:14px;font-weight:500;color:#374151;cursor:pointer;margin-bottom:8px;display:block;width:100%;text-align:left;font-family:var(--font);">🔶  Failures present — address within 7 days</button>
@@ -628,20 +632,28 @@ function generatePDF() {
   const repairs = document.getElementById("f-repairs") ? document.getElementById("f-repairs").value : "";
   const obs = document.getElementById("f-obs") ? document.getElementById("f-obs").value : "";
   const recs = document.getElementById("f-recs") ? document.getElementById("f-recs").value : "";
-  const notesText = hazards || obs;
-  const recsText = repairs || recs;
+  const notesText = hazards || obs || "";
+  const recsText = repairs || recs || "";
 
   const notesSection = notesText ? `
     <div style="margin-bottom:16px;page-break-inside:avoid;">
-      <div style="background:#1a2a4a;color:white;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;">📋 Additional Notes</div>
+      <div style="background:#1a2a4a;color:white;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">📋 Other / Visual Hazards</div>
       <div style="border:1px solid #e8eaed;border-top:none;padding:10px 12px;font-size:12px;color:#374151;line-height:1.6;">${notesText}</div>
-    </div>` : "";
+    </div>` : `
+    <div style="margin-bottom:16px;page-break-inside:avoid;">
+      <div style="background:#1a2a4a;color:white;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">📋 Other / Visual Hazards</div>
+      <div style="border:1px solid #e8eaed;border-top:none;padding:10px 12px;font-size:12px;color:#9ca3af;font-style:italic;line-height:1.6;">No additional hazards noted.</div>
+    </div>`;
 
   const recsSection = recsText ? `
     <div style="margin-bottom:16px;page-break-inside:avoid;">
-      <div style="background:#1a2a4a;color:white;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;">🔧 Recommended Repairs</div>
+      <div style="background:#1a2a4a;color:white;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">🔧 Recommended Repairs</div>
       <div style="border:1px solid #e8eaed;border-top:none;padding:10px 12px;font-size:12px;color:#374151;line-height:1.6;">${recsText}</div>
-    </div>` : "";
+    </div>` : `
+    <div style="margin-bottom:16px;page-break-inside:avoid;">
+      <div style="background:#1a2a4a;color:white;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">🔧 Recommended Repairs</div>
+      <div style="border:1px solid #e8eaed;border-top:none;padding:10px 12px;font-size:12px;color:#9ca3af;font-style:italic;line-height:1.6;">No repairs recommended at this time.</div>
+    </div>`;
 
   const htmlContent = `<!DOCTYPE html>
 <html>
