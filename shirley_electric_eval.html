@@ -362,8 +362,9 @@ function buildNotesPage() {
     </div>
   </div>
   <div class="action-bar">
-    <button class="btn-main" onclick="window.print()">🖨️ Print / Save as PDF</button>
-    <button class="btn-navy" onclick="exportData()">📤 Export summary (copy to clipboard)</button>
+    <button class="btn-main" onclick="generatePDF()">📄 Generate PDF Report</button>
+    <button class="btn-navy" onclick="window.print()">🖨️ Print / Save as PDF</button>
+    <button class="btn-sec" onclick="exportData()">📤 Export summary</button>
   </div>`;
 }
 
@@ -557,6 +558,207 @@ function exportData() {
   });
   const hz=document.getElementById("f-hazards"); if(hz&&hz.value) out+="OTHER / VISUAL HAZARDS:\n"+hz.value+"\n";
   if(navigator.clipboard){navigator.clipboard.writeText(out).then(()=>alert("Copied to clipboard!")).catch(()=>alert(out));}else{alert(out);}
+}
+
+
+function generatePDF() {
+  // Get job info
+  const address = (document.getElementById("f-address") && document.getElementById("f-address").value) || "Unknown Address";
+  const date = (document.getElementById("f-date") && document.getElementById("f-date").value) || new Date().toISOString().split("T")[0];
+  const invoice = (document.getElementById("f-invoice") && document.getElementById("f-invoice").value) || "";
+  const techName = (document.getElementById("f-name") && document.getElementById("f-name").value) || "";
+  const owner = (document.getElementById("f-owner") && document.getElementById("f-owner").value) || "";
+
+  // Format date
+  const dateObj = new Date(date + "T00:00:00");
+  const dateStr = dateObj.toLocaleDateString("en-US", {year:"numeric",month:"long",day:"numeric"});
+  const fileDate = date.replace(/-/g,"");
+  const fileAddr = address.replace(/[^a-zA-Z0-9]/g,"").substring(0,30);
+
+  // Get logo
+  const logoImg = document.querySelector(".topbar-brand img");
+  const logoSrc = logoImg ? logoImg.src : "";
+
+  // Get signatures
+  const sigOwner = document.getElementById("sig-owner");
+  const sigTech = document.getElementById("sig-tech");
+  const sigOwnerData = sigOwner ? sigOwner.toDataURL() : "";
+  const sigTechData = sigTech ? sigTech.toDataURL() : "";
+
+  // Build results HTML
+  const labels = {green:"PASS", yellow:"ATTN", red:"FAIL", na:"N/A"};
+  const colors = {green:"#28a745", yellow:"#856404", red:"#dc3545", na:"#1a6fbd"};
+  const bgColors = {green:"#d4edda", yellow:"#fff3cd", red:"#f8d7da", na:"#e8f1fb"};
+
+  let sectionsHTML = "";
+  SECTIONS.filter(s=>s.items).forEach(sec => {
+    let rowsHTML = "";
+    sec.items.forEach(item => {
+      const v = state[item.id];
+      const label = v ? labels[v] : "—";
+      const color = v ? colors[v] : "#9ca3af";
+      const bg = v ? bgColors[v] : "#f5f6f8";
+      const note = document.getElementById("note-"+item.id);
+      const noteVal = note && note.value ? `<div style="font-size:11px;color:#6b7280;margin-top:3px;padding-left:8px;border-left:2px solid ${color};">📝 ${note.value}</div>` : "";
+      rowsHTML += `
+        <tr>
+          <td style="padding:8px 10px;font-size:13px;color:#374151;border-bottom:1px solid #e8eaed;width:75%;">
+            ${item.label}
+            ${noteVal}
+          </td>
+          <td style="padding:8px 10px;text-align:center;border-bottom:1px solid #e8eaed;width:25%;">
+            <span style="background:${bg};color:${color};font-weight:700;font-size:11px;padding:3px 10px;border-radius:999px;display:inline-block;">${label}</span>
+          </td>
+        </tr>`;
+    });
+    sectionsHTML += `
+      <div style="margin-bottom:20px;break-inside:avoid;">
+        <div style="background:#1a2a4a;color:white;padding:8px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">
+          ${sec.icon} ${sec.label}
+        </div>
+        <table style="width:100%;border-collapse:collapse;background:white;border:1px solid #e8eaed;border-top:none;border-radius:0 0 6px 6px;overflow:hidden;">
+          ${rowsHTML}
+        </table>
+      </div>`;
+  });
+
+  // Get hazards and repairs
+  const hazards = document.getElementById("f-hazards") ? document.getElementById("f-hazards").value : "";
+  const repairs = document.getElementById("f-repairs") ? document.getElementById("f-repairs").value : "";
+  const obs = document.getElementById("f-obs") ? document.getElementById("f-obs").value : "";
+  const recs = document.getElementById("f-recs") ? document.getElementById("f-recs").value : "";
+
+  // Count results
+  let pass=0,attn=0,fail=0,na=0;
+  SECTIONS.filter(s=>s.items).forEach(sec=>sec.items.forEach(item=>{
+    const v=state[item.id];
+    if(v==="green") pass++;
+    else if(v==="yellow") attn++;
+    else if(v==="red") fail++;
+    else if(v==="na") na++;
+  }));
+  const total = SECTIONS.filter(s=>s.items).reduce((a,s)=>a+s.items.length,0);
+  const scored = pass+attn+fail;
+  const pct = scored > 0 ? Math.round(pass/scored*100) : 0;
+  const overallColor = fail > 0 ? "#dc3545" : attn > 0 ? "#856404" : "#28a745";
+  const overallBg = fail > 0 ? "#f8d7da" : attn > 0 ? "#fff3cd" : "#d4edda";
+  const overallText = fail > 0 ? "🚨 Repairs Required" : attn > 0 ? "⚠️ Attention Items Found" : "✅ Passed Inspection";
+
+  const extraNotes = (hazards || obs) ? `
+    <div style="margin-bottom:20px;break-inside:avoid;">
+      <div style="background:#1a2a4a;color:white;padding:8px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">📋 Additional Notes</div>
+      <div style="background:white;border:1px solid #e8eaed;border-top:none;border-radius:0 0 6px 6px;padding:12px;font-size:13px;color:#374151;line-height:1.6;">
+        ${hazards || obs}
+      </div>
+    </div>` : "";
+
+  const extraRecs = (repairs || recs) ? `
+    <div style="margin-bottom:20px;break-inside:avoid;">
+      <div style="background:#1a2a4a;color:white;padding:8px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">🔧 Recommended Repairs</div>
+      <div style="background:white;border:1px solid #e8eaed;border-top:none;border-radius:0 0 6px 6px;padding:12px;font-size:13px;color:#374151;line-height:1.6;">
+        ${repairs || recs}
+      </div>
+    </div>` : "";
+
+  const disclaimer = `<div style="margin-bottom:20px;background:#f5f6f8;border:1px solid #e8eaed;border-radius:6px;padding:14px;font-size:10px;color:#6b7280;line-height:1.7;break-inside:avoid;">
+    <strong style="color:#374151;">Shirley Electric Company</strong> is dedicated to ensuring your safety which is why we perform this <strong>FREE</strong> Visual Home Electrical Safety Evaluation. If any of the line items listed in this evaluation Fail, it is our recommendation that the proper repairs / corrections be made. The homeowner understands that safety hazards are not limited to the line items in this FREE Visual Home Electrical Safety Evaluation and not all potential electrical hazards are listed in this evaluation.<br/><br/>
+    I have been informed of existing code violations and safety concerns, and if I choose not to have these violations or concerns repaired; I will hold Shirley Electric Company harmless and indemnify Shirley Electric Company from any damage or loss, including personal injuries which may occur as a result of not having repairs or corrections made.<br/><br/>
+    <em>Suggestions are the Technician's professional opinion. Shirley Electric Company is not responsible for hazards not seen or detected.</em>
+  </div>`;
+
+  const sigSection = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;break-inside:avoid;">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Homeowner Signature</div>
+        <div style="border:1.5px solid #d1d5db;border-radius:6px;height:90px;background:white;overflow:hidden;">
+          ${sigOwnerData ? `<img src="${sigOwnerData}" style="width:100%;height:100%;object-fit:contain;" />` : ""}
+        </div>
+        <div style="border-top:1px solid #374151;margin-top:8px;padding-top:4px;font-size:10px;color:#6b7280;">Homeowner Signature and Date</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Technician Signature</div>
+        <div style="border:1.5px solid #d1d5db;border-radius:6px;height:90px;background:white;overflow:hidden;">
+          ${sigTechData ? `<img src="${sigTechData}" style="width:100%;height:100%;object-fit:contain;" />` : ""}
+        </div>
+        <div style="border-top:1px solid #374151;margin-top:8px;padding-top:4px;font-size:10px;color:#6b7280;">Technician Signature and Date</div>
+      </div>
+    </div>`;
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<title>Shirley Electric — Inspection Report</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; margin: 0; padding: 20px; background: white; color: #1f2937; }
+  @media print {
+    body { padding: 0; }
+    .no-print { display: none !important; }
+  }
+</style>
+</head>
+<body>
+  <!-- HEADER -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:#1a2a4a;border-radius:10px;margin-bottom:20px;">
+    <img src="${logoSrc}" style="height:60px;width:auto;" />
+    <div style="text-align:right;color:white;">
+      <div style="font-size:18px;font-weight:700;">Electrical Safety Evaluation</div>
+      <div style="font-size:12px;opacity:0.8;margin-top:4px;">(512) 376-6667 &nbsp;·&nbsp; TECL 18096</div>
+    </div>
+  </div>
+
+  <!-- JOB INFO -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+    <div style="background:#f5f6f8;border-radius:8px;padding:12px;">
+      <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Property</div>
+      <div style="font-size:14px;font-weight:600;color:#1f2937;">${address}</div>
+      ${owner ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">Owner: ${owner}</div>` : ""}
+    </div>
+    <div style="background:#f5f6f8;border-radius:8px;padding:12px;">
+      <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Inspection Details</div>
+      <div style="font-size:14px;font-weight:600;color:#1f2937;">${dateStr}</div>
+      ${invoice ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">Invoice #${invoice}</div>` : ""}
+      ${techName ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">Technician: ${techName}</div>` : ""}
+    </div>
+  </div>
+
+  <!-- OVERALL RESULT -->
+  <div style="background:${overallBg};border:2px solid ${overallColor};border-radius:8px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:16px;font-weight:700;color:${overallColor};">${overallText}</div>
+    <div style="display:flex;gap:16px;font-size:13px;">
+      <span style="color:#28a745;font-weight:700;">✓ ${pass} Pass</span>
+      <span style="color:#856404;font-weight:700;">⚠ ${attn} Attn</span>
+      <span style="color:#dc3545;font-weight:700;">✗ ${fail} Fail</span>
+      <span style="color:#1a6fbd;font-weight:700;">— ${na} N/A</span>
+    </div>
+  </div>
+
+  <!-- SECTIONS -->
+  ${sectionsHTML}
+
+  <!-- EXTRA NOTES -->
+  ${extraNotes}
+  ${extraRecs}
+
+  <!-- DISCLAIMER -->
+  ${disclaimer}
+
+  <!-- SIGNATURES -->
+  ${sigSection}
+
+  <div style="text-align:center;font-size:10px;color:#9ca3af;margin-top:10px;">
+    Shirley Electric Company &nbsp;·&nbsp; (512) 376-6667 &nbsp;·&nbsp; TECL 18096 &nbsp;·&nbsp; Suggestions are the Technician's professional opinion
+  </div>
+
+  <script>window.onload=function(){{window.print();}}<\/script>
+</body>
+</html>`;
+
+  // Open in new window and trigger print/save as PDF
+  const win = window.open("", "_blank");
+  win.document.write(html);
+  win.document.close();
+  win.document.title = "ShirleyElectric_" + fileAddr + "_" + fileDate;
 }
 
 document.addEventListener("DOMContentLoaded",()=>{
