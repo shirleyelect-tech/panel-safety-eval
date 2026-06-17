@@ -476,64 +476,24 @@ function generatePDF() {
   const techName = (document.getElementById("f-name") && document.getElementById("f-name").value) || "";
   const owner = (document.getElementById("f-owner") && document.getElementById("f-owner").value) || "";
 
-  // Format date
   const dateObj = new Date(date + "T00:00:00");
   const dateStr = dateObj.toLocaleDateString("en-US", {year:"numeric",month:"long",day:"numeric"});
   const fileDate = date.replace(/-/g,"");
-  const fileAddr = address.replace(/[^a-zA-Z0-9]/g,"").substring(0,30);
+  const fileAddr = address.replace(/[^a-zA-Z0-9]/g,"").substring(0,25);
 
-  // Get logo
-  const logoImg = document.querySelector(".topbar-brand img");
-  const logoSrc = logoImg ? logoImg.src : "";
-
-  // Get signatures
-  const sigOwner = document.getElementById("sig-owner");
-  const sigTech = document.getElementById("sig-tech");
-  const sigOwnerData = sigOwner ? sigOwner.toDataURL() : "";
-  const sigTechData = sigTech ? sigTech.toDataURL() : "";
-
-  // Build results HTML
   const labels = {green:"PASS", yellow:"ATTN", red:"FAIL", na:"N/A"};
-  const colors = {green:"#28a745", yellow:"#856404", red:"#dc3545", na:"#1a6fbd"};
-  const bgColors = {green:"#d4edda", yellow:"#fff3cd", red:"#f8d7da", na:"#e8f1fb"};
-
-  let sectionsHTML = "";
-  SECTIONS.filter(s=>s.items).forEach(sec => {
-    let rowsHTML = "";
-    sec.items.forEach(item => {
-      const v = state[item.id];
-      const label = v ? labels[v] : "—";
-      const color = v ? colors[v] : "#9ca3af";
-      const bg = v ? bgColors[v] : "#f5f6f8";
-      const note = document.getElementById("note-"+item.id);
-      const noteVal = note && note.value ? `<div style="font-size:11px;color:#6b7280;margin-top:3px;padding-left:8px;border-left:2px solid ${color};">📝 ${note.value}</div>` : "";
-      rowsHTML += `
-        <tr>
-          <td style="padding:8px 10px;font-size:13px;color:#374151;border-bottom:1px solid #e8eaed;width:75%;">
-            ${item.label}
-            ${noteVal}
-          </td>
-          <td style="padding:8px 10px;text-align:center;border-bottom:1px solid #e8eaed;width:25%;">
-            <span style="background:${bg};color:${color};font-weight:700;font-size:11px;padding:3px 10px;border-radius:999px;display:inline-block;">${label}</span>
-          </td>
-        </tr>`;
-    });
-    sectionsHTML += `
-      <div style="margin-bottom:20px;break-inside:avoid;">
-        <div style="background:#1a2a4a;color:white;padding:8px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">
-          ${sec.icon} ${sec.label}
-        </div>
-        <table style="width:100%;border-collapse:collapse;background:white;border:1px solid #e8eaed;border-top:none;border-radius:0 0 6px 6px;overflow:hidden;">
-          ${rowsHTML}
-        </table>
-      </div>`;
-  });
-
-  // Get hazards and repairs
-  const hazards = document.getElementById("f-hazards") ? document.getElementById("f-hazards").value : "";
-  const repairs = document.getElementById("f-repairs") ? document.getElementById("f-repairs").value : "";
-  const obs = document.getElementById("f-obs") ? document.getElementById("f-obs").value : "";
-  const recs = document.getElementById("f-recs") ? document.getElementById("f-recs").value : "";
+  const colors = {
+    green:  {r:40,  g:167, b:69},
+    yellow: {r:133, g:100, b:4},
+    red:    {r:220, g:53,  b:69},
+    na:     {r:26,  g:111, b:189}
+  };
+  const bgColors = {
+    green:  {r:212, g:237, b:218},
+    yellow: {r:255, g:243, b:205},
+    red:    {r:248, g:215, b:218},
+    na:     {r:232, g:241, b:251}
+  };
 
   // Count results
   let pass=0,attn=0,fail=0,na=0;
@@ -544,128 +504,282 @@ function generatePDF() {
     else if(v==="red") fail++;
     else if(v==="na") na++;
   }));
-  const total = SECTIONS.filter(s=>s.items).reduce((a,s)=>a+s.items.length,0);
   const scored = pass+attn+fail;
   const pct = scored > 0 ? Math.round(pass/scored*100) : 0;
-  const overallColor = fail > 0 ? "#dc3545" : attn > 0 ? "#856404" : "#28a745";
-  const overallBg = fail > 0 ? "#f8d7da" : attn > 0 ? "#fff3cd" : "#d4edda";
-  const overallText = fail > 0 ? "🚨 Repairs Required" : attn > 0 ? "⚠️ Attention Items Found" : "✅ Passed Inspection";
 
-  const extraNotes = (hazards || obs) ? `
-    <div style="margin-bottom:20px;break-inside:avoid;">
-      <div style="background:#1a2a4a;color:white;padding:8px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">📋 Additional Notes</div>
-      <div style="background:white;border:1px solid #e8eaed;border-top:none;border-radius:0 0 6px 6px;padding:12px;font-size:13px;color:#374151;line-height:1.6;">
-        ${hazards || obs}
-      </div>
-    </div>` : "";
+  // Load jsPDF
+  const script = document.createElement("script");
+  script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+  script.onload = function() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"letter" });
+    const pw = 215.9; // page width mm
+    const ph = 279.4; // page height mm
+    const ml = 15;    // margin left
+    const mr = 15;    // margin right
+    const cw = pw - ml - mr; // content width
+    let y = 15;
 
-  const extraRecs = (repairs || recs) ? `
-    <div style="margin-bottom:20px;break-inside:avoid;">
-      <div style="background:#1a2a4a;color:white;padding:8px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">🔧 Recommended Repairs</div>
-      <div style="background:white;border:1px solid #e8eaed;border-top:none;border-radius:0 0 6px 6px;padding:12px;font-size:13px;color:#374151;line-height:1.6;">
-        ${repairs || recs}
-      </div>
-    </div>` : "";
+    // Helper: check page break
+    function checkPage(needed) {
+      if (y + needed > ph - 15) {
+        doc.addPage();
+        y = 15;
+      }
+    }
 
-  const disclaimer = `<div style="margin-bottom:20px;background:#f5f6f8;border:1px solid #e8eaed;border-radius:6px;padding:14px;font-size:10px;color:#6b7280;line-height:1.7;break-inside:avoid;">
-    <strong style="color:#374151;">Shirley Electric Company</strong> is dedicated to ensuring your safety which is why we perform this <strong>FREE</strong> Visual Home Electrical Safety Evaluation. If any of the line items listed in this evaluation Fail, it is our recommendation that the proper repairs / corrections be made. The homeowner understands that safety hazards are not limited to the line items in this FREE Visual Home Electrical Safety Evaluation and not all potential electrical hazards are listed in this evaluation.<br/><br/>
-    I have been informed of existing code violations and safety concerns, and if I choose not to have these violations or concerns repaired; I will hold Shirley Electric Company harmless and indemnify Shirley Electric Company from any damage or loss, including personal injuries which may occur as a result of not having repairs or corrections made.<br/><br/>
-    <em>Suggestions are the Technician's professional opinion. Shirley Electric Company is not responsible for hazards not seen or detected.</em>
-  </div>`;
+    // Helper: draw filled rect
+    function fillRect(x, ry, w, h, r, g, b) {
+      doc.setFillColor(r, g, b);
+      doc.rect(x, ry, w, h, "F");
+    }
 
-  const sigSection = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;break-inside:avoid;">
-      <div>
-        <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Homeowner Signature</div>
-        <div style="border:1.5px solid #d1d5db;border-radius:6px;height:90px;background:white;overflow:hidden;">
-          ${sigOwnerData ? `<img src="${sigOwnerData}" style="width:100%;height:100%;object-fit:contain;" />` : ""}
-        </div>
-        <div style="border-top:1px solid #374151;margin-top:8px;padding-top:4px;font-size:10px;color:#6b7280;">Homeowner Signature and Date</div>
-      </div>
-      <div>
-        <div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Technician Signature</div>
-        <div style="border:1.5px solid #d1d5db;border-radius:6px;height:90px;background:white;overflow:hidden;">
-          ${sigTechData ? `<img src="${sigTechData}" style="width:100%;height:100%;object-fit:contain;" />` : ""}
-        </div>
-        <div style="border-top:1px solid #374151;margin-top:8px;padding-top:4px;font-size:10px;color:#6b7280;">Technician Signature and Date</div>
-      </div>
-    </div>`;
+    // Helper: rounded rect
+    function roundRect(x, ry, w, h, radius, r, g, b, style) {
+      doc.setFillColor(r, g, b);
+      doc.roundedRect(x, ry, w, h, radius, radius, style||"F");
+    }
 
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8"/>
-<title>Shirley Electric — Inspection Report</title>
-<style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; margin: 0; padding: 20px; background: white; color: #1f2937; }
-  @media print {
-    body { padding: 0; }
-    .no-print { display: none !important; }
-  }
-</style>
-</head>
-<body>
-  <!-- HEADER -->
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:#1a2a4a;border-radius:10px;margin-bottom:20px;">
-    <img src="${logoSrc}" style="height:60px;width:auto;" />
-    <div style="text-align:right;color:white;">
-      <div style="font-size:18px;font-weight:700;">Electrical Safety Evaluation</div>
-      <div style="font-size:12px;opacity:0.8;margin-top:4px;">(512) 376-6667 &nbsp;·&nbsp; TECL 18096</div>
-    </div>
-  </div>
+    // ---- HEADER ----
+    fillRect(ml, y, cw, 22, 26, 42, 76); // navy
+    // Logo
+    const logoImg = document.querySelector(".topbar-brand img");
+    if (logoImg) {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = logoImg.naturalWidth;
+        canvas.height = logoImg.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(logoImg, 0, 0);
+        const logoData = canvas.toDataURL("image/png");
+        const logoH = 16;
+        const logoW = logoH * (logoImg.naturalWidth / logoImg.naturalHeight);
+        doc.addImage(logoData, "PNG", ml+3, y+3, logoW, logoH);
+      } catch(e) {}
+    }
+    // Company info right side
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(13);
+    doc.setFont("helvetica","bold");
+    doc.text("Electrical Safety Evaluation", pw-mr, y+9, {align:"right"});
+    doc.setFontSize(9);
+    doc.setFont("helvetica","normal");
+    doc.text("(512) 376-6667  ·  TECL 18096", pw-mr, y+15, {align:"right"});
+    y += 27;
 
-  <!-- JOB INFO -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-    <div style="background:#f5f6f8;border-radius:8px;padding:12px;">
-      <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Property</div>
-      <div style="font-size:14px;font-weight:600;color:#1f2937;">${address}</div>
-      ${owner ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">Owner: ${owner}</div>` : ""}
-    </div>
-    <div style="background:#f5f6f8;border-radius:8px;padding:12px;">
-      <div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Inspection Details</div>
-      <div style="font-size:14px;font-weight:600;color:#1f2937;">${dateStr}</div>
-      ${invoice ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">Invoice #${invoice}</div>` : ""}
-      ${techName ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">Technician: ${techName}</div>` : ""}
-    </div>
-  </div>
+    // ---- JOB INFO BOXES ----
+    const boxH = 18;
+    const boxW = (cw-5)/2;
+    // Left box - Property
+    roundRect(ml, y, boxW, boxH, 2, 245,246,248);
+    doc.setTextColor(107,114,128);
+    doc.setFontSize(7);
+    doc.setFont("helvetica","bold");
+    doc.text("PROPERTY", ml+4, y+5);
+    doc.setTextColor(31,41,55);
+    doc.setFontSize(10);
+    doc.setFont("helvetica","bold");
+    const addrLines = doc.splitTextToSize(address, boxW-8);
+    doc.text(addrLines[0], ml+4, y+11);
+    if (owner) {
+      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(107,114,128);
+      doc.text("Owner: " + owner, ml+4, y+16);
+    }
+    // Right box - Inspection
+    roundRect(ml+boxW+5, y, boxW, boxH, 2, 245,246,248);
+    doc.setTextColor(107,114,128);
+    doc.setFontSize(7);
+    doc.setFont("helvetica","bold");
+    doc.text("INSPECTION DETAILS", ml+boxW+9, y+5);
+    doc.setTextColor(31,41,55);
+    doc.setFontSize(10);
+    doc.setFont("helvetica","bold");
+    doc.text(dateStr, ml+boxW+9, y+11);
+    doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(107,114,128);
+    if (invoice) doc.text("Invoice #" + invoice, ml+boxW+9, y+16);
+    if (techName) doc.text("Tech: " + techName, ml+boxW+9, y+16+(invoice?4:0));
+    y += boxH + 5;
 
-  <!-- OVERALL RESULT -->
-  <div style="background:${overallBg};border:2px solid ${overallColor};border-radius:8px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">
-    <div style="font-size:16px;font-weight:700;color:${overallColor};">${overallText}</div>
-    <div style="display:flex;gap:16px;font-size:13px;">
-      <span style="color:#28a745;font-weight:700;">✓ ${pass} Pass</span>
-      <span style="color:#856404;font-weight:700;">⚠ ${attn} Attn</span>
-      <span style="color:#dc3545;font-weight:700;">✗ ${fail} Fail</span>
-      <span style="color:#1a6fbd;font-weight:700;">— ${na} N/A</span>
-    </div>
-  </div>
+    // ---- OVERALL RESULT BANNER ----
+    const overallFail = fail > 0;
+    const overallAttn = !overallFail && attn > 0;
+    const bannerR = overallFail ? 248 : overallAttn ? 255 : 212;
+    const bannerG = overallFail ? 215 : overallAttn ? 243 : 237;
+    const bannerB = overallFail ? 218 : overallAttn ? 205 : 218;
+    const bannerTR = overallFail ? 220 : overallAttn ? 133 : 40;
+    const bannerTG = overallFail ? 53  : overallAttn ? 100 : 167;
+    const bannerTB = overallFail ? 69  : overallAttn ? 4   : 69;
+    const bannerText = overallFail ? "Repairs Required" : overallAttn ? "Attention Items Found" : "Passed Inspection";
+    roundRect(ml, y, cw, 12, 2, bannerR, bannerG, bannerB);
+    doc.setTextColor(bannerTR, bannerTG, bannerTB);
+    doc.setFontSize(11); doc.setFont("helvetica","bold");
+    doc.text(bannerText, ml+5, y+8);
+    doc.setFontSize(9); doc.setFont("helvetica","normal");
+    doc.text(`Pass: ${pass}   Attn: ${attn}   Fail: ${fail}   N/A: ${na}   Score: ${pct}%`, pw-mr, y+8, {align:"right"});
+    y += 17;
 
-  <!-- SECTIONS -->
-  ${sectionsHTML}
+    // ---- SECTIONS ----
+    SECTIONS.filter(s=>s.items).forEach(sec => {
+      checkPage(20);
+      // Section header
+      fillRect(ml, y, cw, 8, 26, 42, 76);
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(9); doc.setFont("helvetica","bold");
+      doc.text(sec.label.toUpperCase(), ml+4, y+5.5);
+      y += 8;
 
-  <!-- EXTRA NOTES -->
-  ${extraNotes}
-  ${extraRecs}
+      sec.items.forEach(item => {
+        const v = state[item.id];
+        const note = document.getElementById("note-"+item.id);
+        const noteVal = note && note.value ? note.value : "";
+        const rowH = noteVal ? 12 : 8;
+        checkPage(rowH + 2);
 
-  <!-- DISCLAIMER -->
-  ${disclaimer}
+        // Row background
+        fillRect(ml, y, cw, rowH, 249, 250, 251);
+        // Border line
+        doc.setDrawColor(232,234,237);
+        doc.setLineWidth(0.2);
+        doc.line(ml, y+rowH, ml+cw, y+rowH);
 
-  <!-- SIGNATURES -->
-  ${sigSection}
+        // Item text
+        doc.setTextColor(55,65,81);
+        doc.setFontSize(8.5); doc.setFont("helvetica","normal");
+        const itemLines = doc.splitTextToSize(item.label, cw-35);
+        doc.text(itemLines, ml+3, y+5.5);
 
-  <div style="text-align:center;font-size:10px;color:#9ca3af;margin-top:10px;">
-    Shirley Electric Company &nbsp;·&nbsp; (512) 376-6667 &nbsp;·&nbsp; TECL 18096 &nbsp;·&nbsp; Suggestions are the Technician's professional opinion
-  </div>
+        // Note
+        if (noteVal) {
+          doc.setTextColor(107,114,128);
+          doc.setFontSize(7.5); doc.setFont("helvetica","italic");
+          const noteLines = doc.splitTextToSize("Note: " + noteVal, cw-35);
+          doc.text(noteLines, ml+5, y+10);
+        }
 
-  <script>window.onload=function(){{window.print();}}<\/script>
-</body>
-</html>`;
+        // Status badge
+        if (v) {
+          const bc = bgColors[v];
+          const tc = colors[v];
+          const badgeW = 16; const badgeH = 5;
+          const bx = ml+cw-badgeW-2;
+          const by = y + (rowH/2) - (badgeH/2);
+          roundRect(bx, by, badgeW, badgeH, 1.5, bc.r, bc.g, bc.b);
+          doc.setTextColor(tc.r, tc.g, tc.b);
+          doc.setFontSize(7); doc.setFont("helvetica","bold");
+          doc.text(labels[v], bx+(badgeW/2), by+3.5, {align:"center"});
+        } else {
+          doc.setTextColor(156,163,175);
+          doc.setFontSize(7); doc.setFont("helvetica","normal");
+          doc.text("—", ml+cw-10, y+5.5, {align:"center"});
+        }
+        y += rowH;
+      });
+      y += 5;
+    });
 
-  // Open in new window and trigger print/save as PDF
-  const win = window.open("", "_blank");
-  win.document.write(html);
-  win.document.close();
-  win.document.title = "ShirleyElectric_" + fileAddr + "_" + fileDate;
+    // ---- EXTRA NOTES ----
+    const hazards = document.getElementById("f-hazards") ? document.getElementById("f-hazards").value : "";
+    const repairs = document.getElementById("f-repairs") ? document.getElementById("f-repairs").value : "";
+    const obs = document.getElementById("f-obs") ? document.getElementById("f-obs").value : "";
+    const recs = document.getElementById("f-recs") ? document.getElementById("f-recs").value : "";
+    const notesText = hazards || obs;
+    const recsText = repairs || recs;
+
+    if (notesText) {
+      checkPage(20);
+      fillRect(ml, y, cw, 8, 26, 42, 76);
+      doc.setTextColor(255,255,255); doc.setFontSize(9); doc.setFont("helvetica","bold");
+      doc.text("ADDITIONAL NOTES", ml+4, y+5.5);
+      y += 8;
+      fillRect(ml, y, cw, 2, 249,250,251);
+      doc.setTextColor(55,65,81); doc.setFontSize(8.5); doc.setFont("helvetica","normal");
+      const noteLines = doc.splitTextToSize(notesText, cw-6);
+      const noteH = noteLines.length * 5 + 6;
+      checkPage(noteH);
+      fillRect(ml, y, cw, noteH, 249,250,251);
+      doc.text(noteLines, ml+3, y+5);
+      y += noteH + 5;
+    }
+
+    if (recsText) {
+      checkPage(20);
+      fillRect(ml, y, cw, 8, 26, 42, 76);
+      doc.setTextColor(255,255,255); doc.setFontSize(9); doc.setFont("helvetica","bold");
+      doc.text("RECOMMENDED REPAIRS", ml+4, y+5.5);
+      y += 8;
+      doc.setTextColor(55,65,81); doc.setFontSize(8.5); doc.setFont("helvetica","normal");
+      const recLines = doc.splitTextToSize(recsText, cw-6);
+      const recH = recLines.length * 5 + 6;
+      checkPage(recH);
+      fillRect(ml, y, cw, recH, 249,250,251);
+      doc.text(recLines, ml+3, y+5);
+      y += recH + 5;
+    }
+
+    // ---- DISCLAIMER ----
+    checkPage(35);
+    const discText = "Shirley Electric Company is dedicated to ensuring your safety which is why we perform this FREE Visual Home Electrical Safety Evaluation. If any of the line items listed in this evaluation Fail, it is our recommendation that the proper repairs / corrections be made. The homeowner understands that safety hazards are not limited to the line items in this FREE Visual Home Electrical Safety Evaluation and not all potential electrical hazards are listed in this evaluation.\n\nI have been informed of existing code violations and safety concerns, and if I choose not to have these violations or concerns repaired; I will hold Shirley Electric Company harmless and indemnify Shirley Electric Company from any damage or loss, including personal injuries which may occur as a result of not having repairs or corrections made.\n\nSuggestions are the Technician's professional opinion. Shirley Electric Company is not responsible for hazards not seen or detected.";
+    roundRect(ml, y, cw, 2, 1, 245,246,248);
+    doc.setTextColor(107,114,128); doc.setFontSize(7.5); doc.setFont("helvetica","normal");
+    const discLines = doc.splitTextToSize(discText, cw-6);
+    const discH = discLines.length * 4 + 8;
+    checkPage(discH);
+    roundRect(ml, y, cw, discH, 2, 245,246,248);
+    doc.text(discLines, ml+3, y+5, {lineHeightFactor: 1.4});
+    y += discH + 8;
+
+    // ---- SIGNATURES ----
+    checkPage(40);
+    const sigBoxW = (cw-10)/2;
+    const sigBoxH = 28;
+    // Owner sig
+    roundRect(ml, y, sigBoxW, sigBoxH, 2, 255,255,255);
+    doc.setDrawColor(209,213,219); doc.setLineWidth(0.5);
+    doc.roundedRect(ml, y, sigBoxW, sigBoxH, 2, 2);
+    const sigOwnerCanvas = document.getElementById("sig-owner");
+    if (sigOwnerCanvas) {
+      try {
+        const sd = sigOwnerCanvas.toDataURL("image/png");
+        doc.addImage(sd, "PNG", ml+2, y+2, sigBoxW-4, sigBoxH-8);
+      } catch(e){}
+    }
+    doc.setDrawColor(55,65,81); doc.setLineWidth(0.3);
+    doc.line(ml+2, y+sigBoxH-5, ml+sigBoxW-2, y+sigBoxH-5);
+    doc.setTextColor(107,114,128); doc.setFontSize(7); doc.setFont("helvetica","normal");
+    doc.text("Homeowner Signature and Date", ml+3, y+sigBoxH-1.5);
+
+    // Tech sig
+    const sx2 = ml+sigBoxW+10;
+    roundRect(sx2, y, sigBoxW, sigBoxH, 2, 255,255,255);
+    doc.setDrawColor(209,213,219); doc.setLineWidth(0.5);
+    doc.roundedRect(sx2, y, sigBoxW, sigBoxH, 2, 2);
+    const sigTechCanvas = document.getElementById("sig-tech");
+    if (sigTechCanvas) {
+      try {
+        const sd = sigTechCanvas.toDataURL("image/png");
+        doc.addImage(sd, "PNG", sx2+2, y+2, sigBoxW-4, sigBoxH-8);
+      } catch(e){}
+    }
+    doc.setDrawColor(55,65,81); doc.setLineWidth(0.3);
+    doc.line(sx2+2, y+sigBoxH-5, sx2+sigBoxW-2, y+sigBoxH-5);
+    doc.setTextColor(107,114,128); doc.setFontSize(7); doc.setFont("helvetica","normal");
+    doc.text("Technician Signature and Date", sx2+3, y+sigBoxH-1.5);
+    y += sigBoxH + 8;
+
+    // ---- FOOTER ----
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i=1; i<=pageCount; i++) {
+      doc.setPage(i);
+      doc.setTextColor(156,163,175); doc.setFontSize(7); doc.setFont("helvetica","normal");
+      doc.text("Shirley Electric Company  ·  (512) 376-6667  ·  TECL 18096", pw/2, ph-8, {align:"center"});
+      doc.text("Page " + i + " of " + pageCount, pw-mr, ph-8, {align:"right"});
+    }
+
+    // Save the PDF - flat, non-editable binary file
+    const filename = "ShirleyElectric_" + fileAddr + "_" + fileDate + ".pdf";
+    doc.save(filename);
+  };
+  document.head.appendChild(script);
 }
 
 document.addEventListener("DOMContentLoaded",()=>{
