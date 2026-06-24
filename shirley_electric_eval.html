@@ -99,6 +99,15 @@
   .chk-btn.red { color: #e8a0a6; } .chk-btn.red.active { background: var(--red-btn); color: white; } .chk-btn.red.pending { background: #ffebee; color: var(--red); border-top: 3px solid var(--red-btn); }
   .chk-btn.na { color: #90b8e0; } .chk-btn.na.active { background: var(--blue-mid); color: white; } .chk-btn.na.pending { background: #e3f2fd; color: var(--blue); border-top: 3px solid var(--blue-mid); }
   .chk-btn.pending::after { content: "TAP AGAIN"; display: block; font-size: 8px; letter-spacing: 0.5px; margin-top: 1px; opacity: 0.8; }
+  .check-item.is-locked { opacity: 0.95; }
+  .check-item.is-locked .chk-btn { opacity: 0.6; cursor: not-allowed; }
+  .check-item.is-locked .chk-btn.active { opacity: 1; }
+  .check-item.locked-flash { animation: flash-locked 0.6s ease; }
+  .check-item.unlocking { animation: unlocking-pulse 1s linear; }
+  .check-item.just-unlocked { animation: flash-unlocked 0.8s ease; }
+  @keyframes flash-locked { 0%,100%{background:white} 30%,70%{background:#fdecea} }
+  @keyframes unlocking-pulse { 0%{box-shadow:0 0 0 0 rgba(220,53,69,0)} 50%{box-shadow:0 0 0 4px rgba(220,53,69,0.3)} 100%{box-shadow:0 0 0 0 rgba(220,53,69,0)} }
+  @keyframes flash-unlocked { 0%,100%{background:white} 30%,70%{background:#fff3cd} }
   .issue-note { margin: 0 12px 10px; display: none; }
   .issue-note.visible { display: block; }
   .issue-note textarea { width: 100%; padding: 9px 11px; font-size: 14px; border-radius: var(--radius-sm); background: #fff8e1; color: var(--gray6); font-family: var(--font); resize: vertical; min-height: 52px; border: 1.5px solid var(--yellow-btn); }
@@ -753,6 +762,8 @@ ${recsSection}
 document.addEventListener("DOMContentLoaded",()=>{
   buildTabs(); buildPages();
   const d=document.getElementById("f-date"); if(d) d.valueAsDate=new Date();
+  // Attach long-press unlock to all check items
+  SECTIONS.filter(s=>s.items).forEach(sec=>sec.items.forEach(item=>attachLongPress(item.id)));
 });
 </script>
 </body>
