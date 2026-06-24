@@ -89,10 +89,11 @@
   .chk-btn:not(:last-child) { border-right: 1px solid var(--gray1); }
   .chk-btn svg { width: 22px; height: 22px; flex-shrink: 0; }
   .chk-btn span { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-  .chk-btn.green { color: #9dc8a8; } .chk-btn.green.active { background: var(--green-btn); color: white; }
-  .chk-btn.yellow { color: #d4b86a; } .chk-btn.yellow.active { background: var(--yellow-btn); color: var(--yellow-dark); }
-  .chk-btn.red { color: #e8a0a6; } .chk-btn.red.active { background: var(--red-btn); color: white; }
-  .chk-btn.na { color: #90b8e0; } .chk-btn.na.active { background: var(--blue-mid); color: white; }
+  .chk-btn.green { color: #9dc8a8; } .chk-btn.green.active { background: var(--green-btn); color: white; } .chk-btn.green.pending { background: #e8f5e9; color: var(--green); border-top: 3px solid var(--green-btn); }
+  .chk-btn.yellow { color: #d4b86a; } .chk-btn.yellow.active { background: var(--yellow-btn); color: var(--yellow-dark); } .chk-btn.yellow.pending { background: #fffde7; color: var(--yellow); border-top: 3px solid var(--yellow-btn); }
+  .chk-btn.red { color: #e8a0a6; } .chk-btn.red.active { background: var(--red-btn); color: white; } .chk-btn.red.pending { background: #ffebee; color: var(--red); border-top: 3px solid var(--red-btn); }
+  .chk-btn.na { color: #90b8e0; } .chk-btn.na.active { background: var(--blue-mid); color: white; } .chk-btn.na.pending { background: #e3f2fd; color: var(--blue); border-top: 3px solid var(--blue-mid); }
+  .chk-btn.pending::after { content: "TAP AGAIN"; display: block; font-size: 8px; letter-spacing: 0.5px; margin-top: 1px; opacity: 0.8; }
 
   .issue-note { margin: 0 12px 10px; display: none; }
   .issue-note.visible { display: block; }
@@ -306,11 +307,11 @@ function buildNotesPage() {
   </div>
   <div class="card">
     <div class="card-title">Other / Visual hazards</div>
-    <div class="field"><textarea id="f-hazards" placeholder="Describe any additional visual hazards or observations…" style="min-height:100px;"></textarea></div>
+    <div class="field"><textarea id="f-hazards" placeholder="Describe any additional visual hazards or observations…" style="min-height:160px;"></textarea></div>
   </div>
   <div class="card">
     <div class="card-title">Recommended repairs</div>
-    <div class="field"><textarea id="f-repairs" placeholder="List recommended repairs, upgrades, or follow-up actions…" style="min-height:100px;"></textarea></div>
+    <div class="field"><textarea id="f-repairs" placeholder="List recommended repairs, upgrades, or follow-up actions…" style="min-height:160px;"></textarea></div>
   </div>
   <div class="disclaimer">
     <strong>Shirley Electric Company</strong> is dedicated to ensuring your safety which is why we perform this <strong>FREE</strong> Visual Home Electrical Safety Evaluation. If any of the line items listed in this evaluation Fail, it is our recommendation that the proper repairs / corrections be made. The homeowner understands that safety hazards are not limited to the line items in this FREE Visual Home Electrical Safety Evaluation and not all potential electrical hazards are listed in this evaluation.<br/><br/>
@@ -356,12 +357,47 @@ function setPriority(idx) {
   if (el) el.className = "pri-btn " + priClasses[idx];
 }
 
+const pending = {};
+const pendingTimers = {};
+
 function hc(e, id, val) {
   e.preventDefault();
-  state[id] = (state[id]===val) ? null : val;
+  e.stopPropagation();
+  if (state[id] === val) {
+    clearPending(id);
+    state[id] = null;
+    applyState(id);
+    return;
+  }
+  if (pending[id] === val) {
+    clearPending(id);
+    state[id] = val;
+    applyState(id);
+    return;
+  }
+  clearPending(id);
+  pending[id] = val;
+  ["green","yellow","red","na"].forEach(c => {
+    const btn = document.getElementById(c+"-"+id);
+    if (btn) { btn.classList.remove("active","pending"); if (c === val) btn.classList.add("pending"); }
+  });
+  pendingTimers[id] = setTimeout(() => { clearPending(id); }, 3000);
+}
+
+function clearPending(id) {
+  if (pendingTimers[id]) { clearTimeout(pendingTimers[id]); delete pendingTimers[id]; }
+  if (pending[id]) {
+    const btn = document.getElementById(pending[id]+"-"+id);
+    if (btn) btn.classList.remove("pending");
+    delete pending[id];
+  }
+}
+
+function applyState(id) {
   const v = state[id];
   ["green","yellow","red","na"].forEach(c => {
-    const btn = document.getElementById(c+"-"+id); if(btn) btn.classList.toggle("active", v===c);
+    const btn = document.getElementById(c+"-"+id);
+    if (btn) { btn.classList.remove("active","pending"); if(v===c) btn.classList.add("active"); }
   });
   const item = document.getElementById("item-"+id); if(item) item.className = "check-item"+(v?" is-"+v:"");
   const strip = document.getElementById("strip-"+id); if(strip) strip.className = "status-strip"+(v?" c-"+v:"");
