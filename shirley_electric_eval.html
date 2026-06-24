@@ -94,10 +94,11 @@
   .chk-btn:not(:last-child) { border-right: 1px solid var(--gray1); }
   .chk-btn svg { width: 22px; height: 22px; flex-shrink: 0; }
   .chk-btn span { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-  .chk-btn.green { color: #9dc8a8; } .chk-btn.green.active { background: var(--green-btn); color: white; }
-  .chk-btn.yellow { color: #d4b86a; } .chk-btn.yellow.active { background: var(--yellow-btn); color: var(--yellow-dark); }
-  .chk-btn.red { color: #e8a0a6; } .chk-btn.red.active { background: var(--red-btn); color: white; }
-  .chk-btn.na { color: #90b8e0; } .chk-btn.na.active { background: var(--blue-mid); color: white; }
+  .chk-btn.green { color: #9dc8a8; } .chk-btn.green.active { background: var(--green-btn); color: white; } .chk-btn.green.pending { background: #e8f5e9; color: var(--green); border-top: 3px solid var(--green-btn); }
+  .chk-btn.yellow { color: #d4b86a; } .chk-btn.yellow.active { background: var(--yellow-btn); color: var(--yellow-dark); } .chk-btn.yellow.pending { background: #fffde7; color: var(--yellow); border-top: 3px solid var(--yellow-btn); }
+  .chk-btn.red { color: #e8a0a6; } .chk-btn.red.active { background: var(--red-btn); color: white; } .chk-btn.red.pending { background: #ffebee; color: var(--red); border-top: 3px solid var(--red-btn); }
+  .chk-btn.na { color: #90b8e0; } .chk-btn.na.active { background: var(--blue-mid); color: white; } .chk-btn.na.pending { background: #e3f2fd; color: var(--blue); border-top: 3px solid var(--blue-mid); }
+  .chk-btn.pending::after { content: "TAP AGAIN"; display: block; font-size: 8px; letter-spacing: 0.5px; margin-top: 1px; opacity: 0.8; }
   .issue-note { margin: 0 12px 10px; display: none; }
   .issue-note.visible { display: block; }
   .issue-note textarea { width: 100%; padding: 9px 11px; font-size: 14px; border-radius: var(--radius-sm); background: #fff8e1; color: var(--gray6); font-family: var(--font); resize: vertical; min-height: 52px; border: 1.5px solid var(--yellow-btn); }
@@ -324,11 +325,11 @@ function buildNotesPage() {
   return `
   <div class="card">
     <div class="card-title">Other / Visual hazards</div>
-    <div class="field"><textarea id="f-hazards" placeholder="Exterior panel blocked by A/C unit, interior panel crimped splices not permitted, 1 20 amp breaker wire oversized, no grounds present…" style="min-height:100px;"></textarea></div>
+    <div class="field"><textarea id="f-hazards" placeholder="Exterior panel blocked by A/C unit, interior panel crimped splices not permitted, 1 20 amp breaker wire oversized, no grounds present…" style="min-height:160px;"></textarea></div>
   </div>
   <div class="card">
     <div class="card-title">Recommended repairs</div>
-    <div class="field"><textarea id="f-repairs" placeholder="List recommended repairs, upgrades, or follow-up actions required…" style="min-height:100px;"></textarea></div>
+    <div class="field"><textarea id="f-repairs" placeholder="List recommended repairs, upgrades, or follow-up actions required…" style="min-height:160px;"></textarea></div>
   </div>
   <div class="card">
     <div class="card-title">Overall result</div>
