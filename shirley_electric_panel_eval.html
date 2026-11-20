@@ -93,7 +93,12 @@
   .chk-btn.yellow { color: #d4b86a; } .chk-btn.yellow.active { background: var(--yellow-btn); color: var(--yellow-dark); } .chk-btn.yellow.pending { background: #fffde7; color: var(--yellow); border-top: 3px solid var(--yellow-btn); }
   .chk-btn.red { color: #e8a0a6; } .chk-btn.red.active { background: var(--red-btn); color: white; } .chk-btn.red.pending { background: #ffebee; color: var(--red); border-top: 3px solid var(--red-btn); }
   .chk-btn.na { color: #90b8e0; } .chk-btn.na.active { background: var(--blue-mid); color: white; } .chk-btn.na.pending { background: #e3f2fd; color: var(--blue); border-top: 3px solid var(--blue-mid); }
-  .chk-btn.pending::after { content: "TAP AGAIN"; display: block; font-size: 8px; letter-spacing: 0.5px; margin-top: 1px; opacity: 0.8; }
+  .chk-btn.pending::after { content: "TAP AGAIN"; display: block; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; margin-top: 1px; }
+  .chk-btn.pending-clear { box-shadow: inset 0 0 0 3px rgba(0,0,0,0.35); }
+  .chk-btn.pending-clear span { display: none; }
+  .chk-btn.pending-clear::after { content: "TAP AGAIN TO CLEAR"; display: block; font-size: 10px; font-weight: 800; letter-spacing: 0.3px; line-height: 1.15; text-align: center; padding: 0 4px; }
+  .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--gray6); color: white; font-size: 14px; font-weight: 600; padding: 12px 18px; border-radius: 999px; z-index: 500; opacity: 0; pointer-events: none; transition: opacity 0.2s; max-width: 92vw; text-align: center; }
+  .toast.show { opacity: 0.95; }
   .check-item.is-locked .chk-btn { opacity: 0.6; cursor: not-allowed; }
   .check-item.is-locked .chk-btn.active { opacity: 1; }
   .check-item.locked-flash { animation: flash-locked 0.6s ease; }
@@ -126,6 +131,10 @@
   .action-bar { padding: 12px; padding-bottom: 40px; display: flex; flex-direction: column; gap: 10px; }
   .btn-main { background: var(--orange); color: white; border: none; border-radius: var(--radius); padding: 16px; font-size: 16px; font-weight: 700; font-family: var(--font); cursor: pointer; }
   .btn-navy { background: var(--navy); color: white; border: none; border-radius: var(--radius); padding: 16px; font-size: 16px; font-weight: 700; font-family: var(--font); cursor: pointer; }
+
+  .chk-btn { touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  .btn-sec { background: white; color: var(--navy); border: 1.5px solid var(--navy); border-radius: var(--radius); padding: 16px; font-size: 16px; font-weight: 700; font-family: var(--font); cursor: pointer; }
+  .btn-reset { background: none; border: none; color: var(--gray4); font-size: 14px; padding: 8px; font-family: var(--font); cursor: pointer; text-decoration: underline; }
 
   @media print {
     .topbar, .info-bar, .tabs-wrap, .action-bar { display: none !important; }
@@ -202,9 +211,37 @@ const SECTIONS = [
   { id:"notes", label:"Notes & Sign-off", icon:"📝", items:null },
 ];
 
+const PRI_LABELS = [
+  "✅ No action required — passed inspection",
+  "⚠️ Attention items — address within 90 days",
+  "🔶 Failures present — address within 7 days",
+  "🚨 Critical — do not energize / immediate repair required",
+];
+
+const PANEL_FIELDS = [
+  ["f-brand","Panel brand"],["f-amps","Panel amperage"],["f-circuits","Number of circuits"],
+  ["f-year","Year installed"],["f-meter","Meter number"],
+];
+
+const SAVE_FIELDS = ["f-address","f-date","f-invoice","f-brand","f-amps","f-circuits","f-year","f-meter",
+  "f-name","f-owner","f-hazards","f-repairs","f-owner-date","f-tech-date"];
+
+const STORE_KEY = "shirley-panel-eval-v1";
+
 const state = {};
 let activeTab = "info";
+let loading = false;
 const TOTAL = SECTIONS.filter(s=>s.items).reduce((a,s)=>a+s.items.length, 0);
+
+function val(id) { const el=document.getElementById(id); return el ? el.value : ""; }
+function esc(s) {
+  return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/\n/g,"<br/>");
+}
+function fmtDate(d) {
+  if (!d) return "";
+  const o = new Date(d+"T00:00:00");
+  return isNaN(o) ? d : o.toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"});
+}
 
 function buildTabs() {
   const wrap = document.getElementById("tabs-wrap");
@@ -226,6 +263,9 @@ function switchTab(id) {
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
   document.getElementById("page-"+id).classList.add("active");
   document.getElementById("tab-"+id).scrollIntoView({behavior:"smooth",block:"nearest",inline:"center"});
+  // Signature pads can only be sized once their tab is visible
+  Object.keys(sigs).forEach(k => sigs[k].resize());
+  window.scrollTo(0,0);
 }
 
 function buildPages() {
@@ -257,10 +297,10 @@ function buildCheckItem(item) {
     <div class="status-strip" id="strip-${item.id}"></div>
     <div class="check-top"><div class="check-label">${item.label}</div></div>
     <div class="check-btns">
-      <button class="chk-btn green" id="green-${item.id}" ontouchend="hc(event,'${item.id}','green')" onclick="hc(event,'${item.id}','green')">${svgCheck}<span>Pass</span></button>
-      <button class="chk-btn yellow" id="yellow-${item.id}" ontouchend="hc(event,'${item.id}','yellow')" onclick="hc(event,'${item.id}','yellow')">${svgWarn}<span>Attn</span></button>
-      <button class="chk-btn red" id="red-${item.id}" ontouchend="hc(event,'${item.id}','red')" onclick="hc(event,'${item.id}','red')">${svgX}<span>Fail</span></button>
-      <button class="chk-btn na" id="na-${item.id}" ontouchend="hc(event,'${item.id}','na')" onclick="hc(event,'${item.id}','na')">${svgNA}<span>N/A</span></button>
+      <button type="button" class="chk-btn green" id="green-${item.id}" onclick="hc(event,'${item.id}','green')">${svgCheck}<span>Pass</span></button>
+      <button type="button" class="chk-btn yellow" id="yellow-${item.id}" onclick="hc(event,'${item.id}','yellow')">${svgWarn}<span>Attn</span></button>
+      <button type="button" class="chk-btn red" id="red-${item.id}" onclick="hc(event,'${item.id}','red')">${svgX}<span>Fail</span></button>
+      <button type="button" class="chk-btn na" id="na-${item.id}" onclick="hc(event,'${item.id}','na')">${svgNA}<span>N/A</span></button>
     </div>
     <div class="issue-note" id="note-wrap-${item.id}">
       <textarea id="note-${item.id}" placeholder="Add notes…"></textarea>
@@ -281,14 +321,14 @@ function buildInfoPage() {
   <div class="card">
     <div class="card-title">Panel details</div>
     <div class="field-row">
-      <div class="field"><label>Panel brand</label><input type="text" placeholder="e.g. Square D" /></div>
-      <div class="field"><label>Panel amperage</label><input type="text" placeholder="e.g. 200A" /></div>
+      <div class="field"><label>Panel brand</label><input type="text" id="f-brand" placeholder="e.g. Square D" /></div>
+      <div class="field"><label>Panel amperage</label><input type="text" id="f-amps" placeholder="e.g. 200A" /></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>Number of circuits</label><input type="text" placeholder="e.g. 40" /></div>
-      <div class="field"><label>Year installed</label><input type="text" placeholder="e.g. 1998" /></div>
+      <div class="field"><label>Number of circuits</label><input type="text" id="f-circuits" placeholder="e.g. 40" /></div>
+      <div class="field"><label>Year installed</label><input type="text" id="f-year" placeholder="e.g. 1998" /></div>
     </div>
-    <div class="field"><label>Meter number</label><input type="text" placeholder="Meter # if applicable" /></div>
+    <div class="field"><label>Meter number</label><input type="text" id="f-meter" placeholder="Meter # if applicable" /></div>
   </div>
   <div class="card">
     <div class="card-title">Technician</div>
@@ -301,6 +341,7 @@ function buildInfoPage() {
   </div>
   <div class="action-bar" style="padding-top:4px;">
     <button class="btn-main" onclick="switchTab('panel_in')">Start inspection →</button>
+    <button class="btn-reset" onclick="newInspection()">Clear form &amp; start a new inspection</button>
   </div>`;
 }
 
@@ -345,8 +386,8 @@ function buildNotesPage() {
       </div>
     </div>
     <div class="field-row" style="margin-top:10px;">
-      <div class="field"><label>Homeowner — date</label><input type="date" /></div>
-      <div class="field"><label>Technician — date</label><input type="date" /></div>
+      <div class="field"><label>Homeowner — date</label><input type="date" id="f-owner-date" /></div>
+      <div class="field"><label>Technician — date</label><input type="date" id="f-tech-date" /></div>
     </div>
   </div>
   <div class="action-bar">
@@ -363,78 +404,102 @@ function setPriority(idx) {
   activePri = idx;
   const el = document.getElementById("pri-"+idx);
   if (el) el.className = "pri-btn " + priClasses[idx];
+  saveData();
 }
 
-const pending = {};
+// Two taps to select. Once answered, the item is locked:
+// tap the selected answer twice to clear it, then choose again.
+const PENDING_MS = 4000;
+const pending = {};        // id -> { val, mode: "select" | "clear" }
 const pendingTimers = {};
-const locked = {};
-const holdTimers = {};
-const holdActive = {};
 
-function hc(e, id, val) {
-  e.preventDefault();
-  e.stopPropagation();
-  if (locked[id]) { showLockedFeedback(id); return; }
-  if (!state[id]) {
-    if (pending[id] === val) {
+function hc(e, id, v) {
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  const p = pending[id];
+  if (state[id]) {
+    if (v !== state[id]) {
       clearPending(id);
-      state[id] = val;
-      locked[id] = true;
-      applyState(id);
-    } else {
-      clearPending(id);
-      pending[id] = val;
-      ["green","yellow","red","na"].forEach(c => {
-        const btn = document.getElementById(c+"-"+id);
-        if (btn) { btn.classList.remove("active","pending"); if (c === val) btn.classList.add("pending"); }
-      });
-      pendingTimers[id] = setTimeout(() => { clearPending(id); }, 3000);
+      showLockedFeedback(id);
+      toast("Already answered — tap the selected answer twice to clear it");
+      return;
     }
+    if (p && p.mode === "clear") {
+      clearPending(id);
+      delete state[id];
+      applyState(id);
+      saveData();
+      return;
+    }
+    setPending(id, v, "clear");
+    return;
+  }
+  if (p && p.mode === "select" && p.val === v) {
+    clearPending(id);
+    state[id] = v;
+    applyState(id);
+    saveData();
+    return;
+  }
+  setPending(id, v, "select");
+}
+
+function setPending(id, v, mode) {
+  clearPending(id);
+  pending[id] = { val: v, mode };
+  const btn = document.getElementById(v+"-"+id);
+  if (btn) btn.classList.add(mode === "clear" ? "pending-clear" : "pending");
+  pendingTimers[id] = setTimeout(() => clearPending(id), PENDING_MS);
+}
+
+function clearPending(id) {
+  if (pendingTimers[id]) { clearTimeout(pendingTimers[id]); delete pendingTimers[id]; }
+  if (pending[id]) {
+    const btn = document.getElementById(pending[id].val+"-"+id);
+    if (btn) btn.classList.remove("pending","pending-clear");
+    delete pending[id];
   }
 }
 
 function showLockedFeedback(id) {
   const item = document.getElementById("item-"+id);
   if (!item) return;
+  item.classList.remove("locked-flash"); void item.offsetWidth;
   item.classList.add("locked-flash");
   setTimeout(() => item.classList.remove("locked-flash"), 600);
 }
 
-function clearPending(id) {
-  if (pendingTimers[id]) { clearTimeout(pendingTimers[id]); delete pendingTimers[id]; }
-  if (pending[id]) {
-    const btn = document.getElementById(pending[id]+"-"+id);
-    if (btn) btn.classList.remove("pending");
-    delete pending[id];
-  }
+let toastTimer = null;
+function toast(msg) {
+  let t = document.getElementById("toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; document.body.appendChild(t); }
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
 }
 
 function applyState(id) {
   const v = state[id];
   ["green","yellow","red","na"].forEach(c => {
     const btn = document.getElementById(c+"-"+id);
-    if (btn) { btn.classList.remove("active","pending"); if(v===c) btn.classList.add("active"); }
+    if (btn) { btn.classList.remove("active","pending","pending-clear"); if(v===c) btn.classList.add("active"); }
   });
   const item = document.getElementById("item-"+id);
-  if (item) { item.className = "check-item"+(v?" is-"+v:""); if(locked[id]) item.classList.add("is-locked"); }
+  if (item) item.className = "check-item"+(v?" is-"+v+" is-locked":"");
   const strip = document.getElementById("strip-"+id); if(strip) strip.className = "status-strip"+(v?" c-"+v:"");
   const nw = document.getElementById("note-wrap-"+id);
   if(nw) { nw.style.display=(v==="yellow"||v==="red")?"block":"none"; nw.className="issue-note"+(v==="red"?" visible red-note":v==="yellow"?" visible":""); }
   updateScores();
 }
 
-
-
 function updateScores() {
   let g=0,y=0,r=0,na=0;
   SECTIONS.filter(s=>s.items).forEach(sec => {
-    let sg=0,sy=0,sr=0,sna=0;
+    let n=0;
     sec.items.forEach(item => {
       const v=state[item.id];
-      if(v==="green"){g++;sg++;} else if(v==="yellow"){y++;sy++;} else if(v==="red"){r++;sr++;} else if(v==="na"){na++;sna++;}
+      if(v==="green"){g++;n++;} else if(v==="yellow"){y++;n++;} else if(v==="red"){r++;n++;} else if(v==="na"){na++;n++;}
     });
     const badge=document.getElementById("tbadge-"+sec.id);
-    if(badge) badge.textContent=(sg+sy+sr+sna)+"/"+sec.items.length;
+    if(badge) badge.textContent=n+"/"+sec.items.length;
   });
   const total=g+y+r+na; const scored=g+y+r;
   document.getElementById("cnt-green").textContent=g;
@@ -442,41 +507,65 @@ function updateScores() {
   document.getElementById("cnt-red").textContent=r;
   document.getElementById("cnt-na").textContent=na;
   document.getElementById("top-score").textContent=total+" / "+TOTAL;
+  const pctBox=document.getElementById("cnt-pct");
+  const rat=document.getElementById("rating");
+  const w = n => (total ? n/total*100 : 0)+"%";
+  document.getElementById("bar-green").style.width=w(g);
+  document.getElementById("bar-yellow").style.width=w(y);
+  document.getElementById("bar-red").style.width=w(r);
+  document.getElementById("bar-na").style.width=w(na);
   if(scored>0) {
-    const pct=Math.round(g/scored*100);
-    document.getElementById("cnt-pct").textContent=pct+"%";
-    document.getElementById("bar-green").style.width=(g/total*100)+"%";
-    document.getElementById("bar-yellow").style.width=(y/total*100)+"%";
-    document.getElementById("bar-red").style.width=(r/total*100)+"%";
-    document.getElementById("bar-na").style.width=(na/total*100)+"%";
-    const rat=document.getElementById("rating");
-    if(r===0&&y===0){rat.className="rating safe";rat.innerHTML="✅ Both panels passed inspection";}
+    pctBox.textContent=Math.round(g/scored*100)+"%";
+    if(r===0&&y===0){rat.className="rating safe";rat.innerHTML="✅ All checked items passed";}
     else if(r===0){rat.className="rating caution";rat.innerHTML="⚠️ "+y+" item"+(y>1?"s":"")+" need attention";}
     else{rat.className="rating danger";rat.innerHTML="🚨 "+r+" failure"+(r>1?"s":"")+(y>0?", "+y+" attention item"+(y>1?"s":""):"")+" — repairs required";}
+  } else {
+    pctBox.textContent="—";
+    rat.className="rating"; rat.innerHTML="";
   }
 }
 
+// ---------- Signatures ----------
+const sigs = {};
 function initSignatures() {
   ["sig-owner","sig-tech"].forEach(function(id) {
     const wrap=document.getElementById("wrap-"+id);
     const canvas=document.getElementById(id);
-    const placeholder=wrap?wrap.querySelector(".sig-placeholder"):null;
-    if(!canvas) return;
-    function resize() {
-      const w=wrap?wrap.offsetWidth:300;
-      const h=120; const dpr=window.devicePixelRatio||1;
+    if(!canvas || !wrap) return;
+    const placeholder=wrap.querySelector(".sig-placeholder");
+    const s = sigs[id] = { canvas, wrap, placeholder, data:"", w:0 };
+    function styleCtx(ctx) { ctx.strokeStyle="#1f2937"; ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.lineJoin="round"; return ctx; }
+    s.resize = function() {
+      const w = wrap.offsetWidth;
+      if (!w || w === s.w) return;          // hidden tab, or size unchanged
+      s.w = w;
+      const h=120, dpr=window.devicePixelRatio||1;
       canvas.style.width=w+"px"; canvas.style.height=h+"px";
       canvas.width=Math.floor(w*dpr); canvas.height=Math.floor(h*dpr);
       const ctx=canvas.getContext("2d");
-      ctx.scale(dpr,dpr); ctx.strokeStyle="#1f2937"; ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.lineJoin="round";
-    }
-    resize();
-    let drawing=false,lx=0,ly=0,hasMark=false;
-    function getCtx() { const ctx=canvas.getContext("2d"); ctx.strokeStyle="#1f2937"; ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.lineJoin="round"; return ctx; }
+      ctx.setTransform(dpr,0,0,dpr,0,0); styleCtx(ctx);
+      if (s.data) { const img=new Image(); img.onload=()=>ctx.drawImage(img,0,0,w,h); img.src=s.data; }
+    };
+    s.showPlaceholder = function() { if(placeholder) placeholder.style.display = s.data ? "none" : "block"; };
+    s.resize();
+    let drawing=false,lx=0,ly=0;
     function getPos(e) { const r=canvas.getBoundingClientRect(); const src=e.touches?e.touches[0]:e; return{x:src.clientX-r.left,y:src.clientY-r.top}; }
-    function startDraw(e) { e.preventDefault(); e.stopPropagation(); drawing=true; const p=getPos(e); lx=p.x; ly=p.y; if(placeholder) placeholder.style.display="none"; hasMark=true; }
-    function moveDraw(e) { e.preventDefault(); e.stopPropagation(); if(!drawing) return; const p=getPos(e); const ctx=getCtx(); ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(p.x,p.y); ctx.stroke(); lx=p.x; ly=p.y; }
-    function endDraw(e) { e.preventDefault(); drawing=false; }
+    function startDraw(e) {
+      e.preventDefault(); e.stopPropagation(); s.resize();
+      drawing=true; const p=getPos(e); lx=p.x; ly=p.y;
+      if(placeholder) placeholder.style.display="none";
+      const ctx=styleCtx(canvas.getContext("2d")); ctx.beginPath(); ctx.arc(p.x,p.y,1.2,0,Math.PI*2); ctx.fillStyle="#1f2937"; ctx.fill();
+    }
+    function moveDraw(e) {
+      e.preventDefault(); e.stopPropagation(); if(!drawing) return;
+      const p=getPos(e); const ctx=styleCtx(canvas.getContext("2d"));
+      ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(p.x,p.y); ctx.stroke(); lx=p.x; ly=p.y;
+    }
+    function endDraw(e) {
+      if (e) e.preventDefault();
+      if (!drawing) return;
+      drawing=false; s.data=canvas.toDataURL("image/png"); saveData();
+    }
     canvas.addEventListener("touchstart",startDraw,{passive:false});
     canvas.addEventListener("touchmove",moveDraw,{passive:false});
     canvas.addEventListener("touchend",endDraw,{passive:false});
@@ -485,53 +574,94 @@ function initSignatures() {
     canvas.addEventListener("mousemove",moveDraw);
     canvas.addEventListener("mouseup",endDraw);
     canvas.addEventListener("mouseleave",endDraw);
-    window.addEventListener("resize",function(){ if(!hasMark) resize(); });
   });
+  window.addEventListener("resize",function(){ Object.keys(sigs).forEach(k=>sigs[k].resize()); });
 }
 
 function clearSig(id) {
-  const canvas=document.getElementById(id);
-  const wrap=document.getElementById("wrap-"+id);
-  const placeholder=wrap?wrap.querySelector(".sig-placeholder"):null;
-  if(!canvas) return;
-  const dpr=window.devicePixelRatio||1;
-  canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);
-  if(placeholder) placeholder.style.display="block";
+  const s=sigs[id]; if(!s) return;
+  const ctx=s.canvas.getContext("2d");
+  ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,s.canvas.width,s.canvas.height); ctx.restore();
+  s.data=""; s.showPlaceholder(); saveData();
 }
 
+// ---------- Auto-save on this device ----------
+function allItems() { return SECTIONS.filter(s=>s.items).flatMap(s=>s.items); }
+
+function saveData() {
+  if (loading) return;
+  try {
+    const data = { state, pri: activePri, fields:{}, notes:{}, sigs:{} };
+    SAVE_FIELDS.forEach(id => { data.fields[id] = val(id); });
+    allItems().forEach(item => { const v=val("note-"+item.id); if(v) data.notes[item.id]=v; });
+    Object.keys(sigs).forEach(k => { if(sigs[k].data) data.sigs[k]=sigs[k].data; });
+    localStorage.setItem(STORE_KEY, JSON.stringify(data));
+  } catch(e) {}
+}
+
+function loadData() {
+  let data;
+  try { const raw=localStorage.getItem(STORE_KEY); if(!raw) return false; data=JSON.parse(raw); } catch(e) { return false; }
+  loading = true;
+  try {
+    Object.keys(data.fields||{}).forEach(id => { const el=document.getElementById(id); if(el) el.value=data.fields[id]; });
+    Object.keys(data.notes||{}).forEach(id => { const el=document.getElementById("note-"+id); if(el) el.value=data.notes[id]; });
+    Object.keys(data.state||{}).forEach(id => { if(document.getElementById("item-"+id)) { state[id]=data.state[id]; applyState(id); } });
+    if (data.pri >= 0) setPriority(data.pri);
+    Object.keys(data.sigs||{}).forEach(k => { if(sigs[k]) { sigs[k].data=data.sigs[k]; sigs[k].showPlaceholder(); } });
+  } catch(e) {}
+  loading = false;
+  return true;
+}
+
+function newInspection() {
+  if (!confirm("Clear this inspection and start a new one? Anything not saved as a PDF will be lost.")) return;
+  try { localStorage.removeItem(STORE_KEY); } catch(e) {}
+  location.reload();
+}
+
+let saveTimer=null;
+document.addEventListener("input", function(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveData, 300); });
+document.addEventListener("change", saveData);
+window.addEventListener("pagehide", saveData);
+
+// ---------- Export ----------
 function exportData() {
   const labels={green:"PASS",yellow:"ATTN",red:"FAIL",na:"N/A"};
   let out="SHIRLEY ELECTRIC — PANEL EVALUATION\n=====================================\n";
-  const a=document.getElementById("f-address"); if(a&&a.value) out+="Location: "+a.value+"\n";
-  const d=document.getElementById("f-date"); if(d&&d.value) out+="Date: "+d.value+"\n";
-  const inv=document.getElementById("f-invoice"); if(inv&&inv.value) out+="Invoice #: "+inv.value+"\n";
-  const nm=document.getElementById("f-name"); if(nm&&nm.value) out+="Technician: "+nm.value+"\n";
-  out+="License: TECL 18096 | Phone: (512) 376-6667\n\n";
+  if(val("f-address")) out+="Location: "+val("f-address")+"\n";
+  if(val("f-date")) out+="Date: "+val("f-date")+"\n";
+  if(val("f-invoice")) out+="Invoice #: "+val("f-invoice")+"\n";
+  if(val("f-name")) out+="Technician: "+val("f-name")+"\n";
+  if(val("f-owner")) out+="Owner: "+val("f-owner")+"\n";
+  out+="License: TECL 18096 | Phone: (512) 376-6667\n";
+  const pd = PANEL_FIELDS.filter(([id])=>val(id)).map(([id,l])=>l+": "+val(id));
+  if (pd.length) out+="\nPANEL DETAILS\n  "+pd.join("\n  ")+"\n";
+  if (activePri>=0) out+="\nOVERALL RESULT: "+PRI_LABELS[activePri]+"\n";
+  out+="\n";
   SECTIONS.filter(s=>s.items).forEach(sec=>{
     out+=sec.label.toUpperCase()+"\n";
     sec.items.forEach(item=>{
       const v=state[item.id]; const tag=v?labels[v]:"—";
-      const note=document.getElementById("note-"+item.id);
-      const nv=note&&note.value?"\n     Note: "+note.value:"";
+      const nv=val("note-"+item.id)?"\n     Note: "+val("note-"+item.id):"";
       out+="  ["+tag+"] "+item.label+nv+"\n";
     });
     out+="\n";
   });
-  const hz=document.getElementById("f-hazards"); if(hz&&hz.value) out+="VISUAL HAZARDS:\n"+hz.value+"\n\n";
-  const rp=document.getElementById("f-repairs"); if(rp&&rp.value) out+="RECOMMENDED REPAIRS:\n"+rp.value+"\n";
+  if(val("f-hazards")) out+="VISUAL HAZARDS:\n"+val("f-hazards")+"\n\n";
+  if(val("f-repairs")) out+="RECOMMENDED REPAIRS:\n"+val("f-repairs")+"\n";
   if(navigator.clipboard){navigator.clipboard.writeText(out).then(()=>alert("Copied to clipboard!")).catch(()=>alert(out));}else{alert(out);}
 }
 
-
+// ---------- PDF ----------
 function generatePDF() {
-  const address = (document.getElementById("f-address") && document.getElementById("f-address").value) || "Unknown Address";
-  const date = (document.getElementById("f-date") && document.getElementById("f-date").value) || new Date().toISOString().split("T")[0];
-  const invoice = (document.getElementById("f-invoice") && document.getElementById("f-invoice").value) || "";
-  const techName = (document.getElementById("f-name") && document.getElementById("f-name").value) || "";
-  const owner = (document.getElementById("f-owner") && document.getElementById("f-owner").value) || "";
+  const address = val("f-address") || "Unknown Address";
+  const date = val("f-date") || new Date().toISOString().split("T")[0];
+  const invoice = val("f-invoice");
+  const techName = val("f-name");
+  const owner = val("f-owner");
 
-  const dateObj = new Date(date + "T00:00:00");
-  const dateStr = dateObj.toLocaleDateString("en-US", {year:"numeric",month:"long",day:"numeric"});
+  const dateStr = fmtDate(date);
   const fileDate = date.replace(/-/g,"");
   const fileAddr = address.replace(/[^a-zA-Z0-9]/g,"").substring(0,25);
   const filename = "ShirleyElectric_" + fileAddr + "_" + fileDate + ".pdf";
@@ -541,13 +671,10 @@ function generatePDF() {
   const statusBg = {green:"#d4edda", yellow:"#fff3cd", red:"#f8d7da", na:"#e8f1fb"};
 
   let pass=0,attn=0,fail=0,na=0;
-  SECTIONS.filter(s=>s.items).forEach(sec=>sec.items.forEach(item=>{
+  allItems().forEach(item=>{
     const v=state[item.id];
-    if(v==="green") pass++;
-    else if(v==="yellow") attn++;
-    else if(v==="red") fail++;
-    else if(v==="na") na++;
-  }));
+    if(v==="green") pass++; else if(v==="yellow") attn++; else if(v==="red") fail++; else if(v==="na") na++;
+  });
   const scored = pass+attn+fail;
   const pct = scored > 0 ? Math.round(pass/scored*100) : 0;
   const overallColor = fail>0 ? "#dc3545" : attn>0 ? "#856404" : "#28a745";
@@ -557,10 +684,10 @@ function generatePDF() {
   const logoImg = document.querySelector(".topbar-brand img");
   const logoSrc = logoImg ? logoImg.src : "";
 
-  const sigOwner = document.getElementById("sig-owner");
-  const sigTech = document.getElementById("sig-tech");
-  const sigOwnerData = sigOwner ? sigOwner.toDataURL() : "";
-  const sigTechData = sigTech ? sigTech.toDataURL() : "";
+  const sigOwnerData = sigs["sig-owner"] ? sigs["sig-owner"].data : "";
+  const sigTechData = sigs["sig-tech"] ? sigs["sig-tech"].data : "";
+  const ownerDate = fmtDate(val("f-owner-date"));
+  const techDate = fmtDate(val("f-tech-date"));
 
   let sectionsHTML = "";
   SECTIONS.filter(s=>s.items).forEach(sec => {
@@ -570,8 +697,8 @@ function generatePDF() {
       const label = v ? labels[v] : "—";
       const color = v ? statusColors[v] : "#9ca3af";
       const bg = v ? statusBg[v] : "#f9fafb";
-      const note = document.getElementById("note-"+item.id);
-      const noteHTML = note && note.value ? `<div style="font-size:10px;color:#6b7280;margin-top:2px;padding-left:6px;border-left:2px solid ${color};">📝 ${note.value}</div>` : "";
+      const note = val("note-"+item.id);
+      const noteHTML = note ? `<div style="font-size:10px;color:#6b7280;margin-top:2px;padding-left:6px;border-left:2px solid ${color};">📝 ${esc(note)}</div>` : "";
       rows += `<tr style="border-bottom:1px solid #e8eaed;">
         <td style="padding:7px 10px;font-size:12px;color:#374151;width:78%;">${item.label}${noteHTML}</td>
         <td style="padding:7px 10px;text-align:center;width:22%;">
@@ -586,29 +713,37 @@ function generatePDF() {
       </div>`;
   });
 
-  const hazards = document.getElementById("f-hazards") ? document.getElementById("f-hazards").value : "";
-  const repairs = document.getElementById("f-repairs") ? document.getElementById("f-repairs").value : "";
-  const obs = document.getElementById("f-obs") ? document.getElementById("f-obs").value : "";
-  const recs = document.getElementById("f-recs") ? document.getElementById("f-recs").value : "";
-  const notesText = hazards || obs;
-  const recsText = repairs || recs;
+  const panelItems = PANEL_FIELDS.filter(([id])=>val(id));
+  const panelHTML = panelItems.length ? `
+    <div style="background:#f5f6f8;border-radius:6px;padding:10px 12px;margin-bottom:14px;">
+      <div style="font-size:9px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Panel Details</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 22px;">
+        ${panelItems.map(([id,l])=>`<div style="font-size:11px;color:#6b7280;">${l}: <span style="font-weight:600;color:#1f2937;">${esc(val(id))}</span></div>`).join("")}
+      </div>
+    </div>` : "";
+
+  const priHTML = activePri>=0 ? `<div style="font-size:12px;font-weight:600;color:#1f2937;margin-top:6px;">Technician's overall result: ${PRI_LABELS[activePri]}</div>` : "";
+
+  const notesText = val("f-hazards");
+  const recsText = val("f-repairs");
 
   const notesSection = notesText ? `
     <div style="margin-bottom:16px;page-break-inside:avoid;">
       <div style="background:#1a2a4a;color:white;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;">📋 Additional Notes</div>
-      <div style="border:1px solid #e8eaed;border-top:none;padding:10px 12px;font-size:12px;color:#374151;line-height:1.6;">${notesText}</div>
+      <div style="border:1px solid #e8eaed;border-top:none;padding:10px 12px;font-size:12px;color:#374151;line-height:1.6;">${esc(notesText)}</div>
     </div>` : "";
 
   const recsSection = recsText ? `
     <div style="margin-bottom:16px;page-break-inside:avoid;">
       <div style="background:#1a2a4a;color:white;padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;">🔧 Recommended Repairs</div>
-      <div style="border:1px solid #e8eaed;border-top:none;padding:10px 12px;font-size:12px;color:#374151;line-height:1.6;">${recsText}</div>
+      <div style="border:1px solid #e8eaed;border-top:none;padding:10px 12px;font-size:12px;color:#374151;line-height:1.6;">${esc(recsText)}</div>
     </div>` : "";
 
   const htmlContent = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8"/>
+<title>${esc(filename)}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, Helvetica, sans-serif; padding: 20px; background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -632,20 +767,25 @@ function generatePDF() {
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
   <div style="background:#f5f6f8;border-radius:6px;padding:10px 12px;">
     <div style="font-size:9px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Property</div>
-    <div style="font-size:13px;font-weight:600;color:#1f2937;">${address}</div>
-    ${owner ? `<div style="font-size:11px;color:#6b7280;margin-top:2px;">Owner: ${owner}</div>` : ""}
+    <div style="font-size:13px;font-weight:600;color:#1f2937;">${esc(address)}</div>
+    ${owner ? `<div style="font-size:11px;color:#6b7280;margin-top:2px;">Owner: ${esc(owner)}</div>` : ""}
   </div>
   <div style="background:#f5f6f8;border-radius:6px;padding:10px 12px;">
     <div style="font-size:9px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Inspection Details</div>
     <div style="font-size:13px;font-weight:600;color:#1f2937;">${dateStr}</div>
-    ${invoice ? `<div style="font-size:11px;color:#6b7280;margin-top:2px;">Invoice #${invoice}</div>` : ""}
-    ${techName ? `<div style="font-size:11px;color:#6b7280;margin-top:2px;">Technician: ${techName}</div>` : ""}
+    ${invoice ? `<div style="font-size:11px;color:#6b7280;margin-top:2px;">Invoice #${esc(invoice)}</div>` : ""}
+    ${techName ? `<div style="font-size:11px;color:#6b7280;margin-top:2px;">Technician: ${esc(techName)}</div>` : ""}
   </div>
 </div>
 
-<div style="background:${overallBg};border:2px solid ${overallColor};border-radius:6px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
-  <div style="font-size:14px;font-weight:700;color:${overallColor};">${overallText}</div>
-  <div style="font-size:11px;font-weight:600;color:#374151;">Pass: ${pass} &nbsp; Attn: ${attn} &nbsp; Fail: ${fail} &nbsp; N/A: ${na} &nbsp; Score: ${pct}%</div>
+${panelHTML}
+
+<div style="background:${overallBg};border:2px solid ${overallColor};border-radius:6px;padding:10px 14px;margin-bottom:16px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:14px;font-weight:700;color:${overallColor};">${overallText}</div>
+    <div style="font-size:11px;font-weight:600;color:#374151;">Pass: ${pass} &nbsp; Attn: ${attn} &nbsp; Fail: ${fail} &nbsp; N/A: ${na} &nbsp; Score: ${pct}%</div>
+  </div>
+  ${priHTML}
 </div>
 
 ${sectionsHTML}
@@ -664,14 +804,14 @@ ${recsSection}
     <div style="border:1.5px solid #d1d5db;border-radius:6px;height:80px;background:white;overflow:hidden;">
       ${sigOwnerData ? `<img src="${sigOwnerData}" style="width:100%;height:100%;object-fit:contain;" />` : ""}
     </div>
-    <div style="border-top:1px solid #374151;margin-top:6px;padding-top:3px;font-size:9px;color:#6b7280;">Homeowner Signature and Date</div>
+    <div style="border-top:1px solid #374151;margin-top:6px;padding-top:3px;font-size:9px;color:#6b7280;">Homeowner Signature and Date${ownerDate ? " — "+ownerDate : ""}</div>
   </div>
   <div>
     <div style="font-size:9px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;">Technician Signature</div>
     <div style="border:1.5px solid #d1d5db;border-radius:6px;height:80px;background:white;overflow:hidden;">
       ${sigTechData ? `<img src="${sigTechData}" style="width:100%;height:100%;object-fit:contain;" />` : ""}
     </div>
-    <div style="border-top:1px solid #374151;margin-top:6px;padding-top:3px;font-size:9px;color:#6b7280;">Technician Signature and Date</div>
+    <div style="border-top:1px solid #374151;margin-top:6px;padding-top:3px;font-size:9px;color:#6b7280;">Technician Signature and Date${techDate ? " — "+techDate : ""}</div>
   </div>
 </div>
 
@@ -687,6 +827,7 @@ ${recsSection}
 </body>
 </html>`;
 
+  saveData();
   // Open print window - on iPad Safari this triggers Save to Files as PDF
   const printWin = window.open("", "_blank", "width=800,height=900");
   if (!printWin) {
@@ -701,8 +842,10 @@ ${recsSection}
 
 document.addEventListener("DOMContentLoaded",()=>{
   buildTabs(); buildPages();
-  const d=document.getElementById("f-date"); if(d) d.valueAsDate=new Date();
-  SECTIONS.filter(s=>s.items).forEach(sec=>sec.items.forEach(item=>attachLongPress(item.id)));
+  if (!loadData()) {
+    const d=document.getElementById("f-date"); if(d) d.valueAsDate=new Date();
+  }
+  updateScores();
 });
 </script>
 </body>
